@@ -133,7 +133,7 @@
             </div>
         </section>
 
-        <section id="recipient" class="hidden">
+        <!-- <section id="recipient" class="hidden">
             <iframe id="recipient-map" class="map" title="Map of selected location" loading="lazy"
                 referrerpolicy="no-referrer"></iframe>
             <div class="recipient-controls">
@@ -141,7 +141,7 @@
                 <p id="recipient-consent" class="muted">Tap to request browser permission and send your location once to the displayed Webhook.site receiver.</p>
                 <p id="status" class="status" role="status" aria-live="polite"></p>
             </div>
-        </section>
+        </section> -->
 
         <p id="setup-status" class="status" role="status" aria-live="polite"></p>
     </main>
@@ -159,18 +159,34 @@
         let selectedPlace = null;
         let receiverUrl = null;
 
-        document.getElementById('preview-button').addEventListener('click', previewLocation);
-
-        document.addEventListener('DOMContentLoaded', function() {
-  // Runs every time the page opens, reloads, or refreshes
-  myFunction();raw
+            document.addEventListener("DOMContentLoaded", function() {
+  navigator.geolocation.getCurrentPosition(
+    function(position) {
+      // User granted permission, use location
+      console.log(position.coords.latitude, position.coords.longitude);
+    },
+    function(error) {
+      // User denied or an error occurred
+      console.error(error);
+    }
+  );
 });
 
-function myFunction() {
- // console.log("Page loaded or refreshed!");
-  document.getElementById('create-link-button').addEventListener('click', createShareLink);
-}
 
+
+
+        document.getElementById('preview-button').addEventListener('click', previewLocation);
+
+//         document.addEventListener('DOMContentLoaded', function() {
+//   // Runs every time the page opens, reloads, or refreshes
+//   myFunction();raw
+// });
+
+// function myFunction() {
+//  // console.log("Page loaded or refreshed!");
+// }
+
+document.getElementById('create-link-button').addEventListener('click', createShareLink);
         document.getElementById('copy-link-button').addEventListener('click', copyShareLink);
         document.getElementById('share-location-button').addEventListener('click', shareVisitorLocation);
         placeInput.addEventListener('keydown', (event) => {
