@@ -222,7 +222,7 @@
 
 <body>
     <main>
-        <h1 id="page-title">Share a location- upated</h1>
+        <h1 id="page-title">Share a location</h1>
         <p id="intro" class="muted">Choose a place or coordinates to preview, then create a link to share.</p>
 
         <section id="setup">
@@ -255,9 +255,9 @@
             <iframe id="recipient-map" class="map" title="Map of selected location" loading="lazy"
                 referrerpolicy="no-referrer"></iframe>
             <div class="recipient-controls">
-                <!-- <button id="share-location-button" type="button">Share my location</button>
+                <button id="share-location-button" type="button">Share my location</button>
                 <p id="recipient-consent" class="muted">Tap to request browser permission and send your location once to the displayed Webhook.site receiver.</p>
-                <p id="status" class="status" role="status" aria-live="polite"></p> -->
+                <p id="status" class="status" role="status" aria-live="polite"></p>
             </div>
         </section>
 
@@ -277,42 +277,18 @@
         let selectedPlace = null;
         let receiverUrl = null;
 
-        // document.addEventListener("DOMContentLoaded", function () {
-        //     navigator.geolocation.getCurrentPosition(
-        //         function (position) {
-        //             // User granted permission, use location
-        //             console.log(position.coords.latitude, position.coords.longitude);
-        //         },
-        //         function (error) {
-        //             // User denied or an error occurred
-        //             console.error(error);
-        //         }
-        //     );
-        // });
-
-
-
-
         document.getElementById('preview-button').addEventListener('click', previewLocation);
-
-        //         document.addEventListener('DOMContentLoaded', function() {
-        //   // Runs every time the page opens, reloads, or refreshes
-        //   myFunction();raw
-        // });
-
-        // function myFunction() {
-        //  // console.log("Page loaded or refreshed!");
-        // }
-
         document.getElementById('create-link-button').addEventListener('click', createShareLink);
         document.getElementById('copy-link-button').addEventListener('click', copyShareLink);
-        document.getElementById('share-link').addEventListener('click', shareVisitorLocation);
+        document.getElementById('share-location-button').addEventListener('click', shareVisitorLocation);
+
         placeInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') previewLocation();
         });
 
         const sharedPlace = params.get('location');
         const sharedReceiver = params.get('webhook');
+
         if (sharedPlace && sharedReceiver) {
             try {
                 const match = sharedPlace.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
@@ -322,13 +298,23 @@
                 validateCoordinates(lat, lon);
                 selectedPlace = { lat, lon, label: `${lat}, ${lon}` };
                 receiverUrl = validateWebhookUrl(sharedReceiver);
+
                 document.body.classList.add('recipient-mode');
                 status = document.getElementById('status');
                 setup.classList.add('hidden');
                 recipient.classList.remove('hidden');
+
                 document.getElementById('share-location-button').textContent =
                     `Share my location with ${receiverUrl.hostname}${receiverUrl.pathname}`;
+
                 setMap(document.getElementById('recipient-map'), `${lat}, ${lon}`);
+
+                // Automatically request location permission when the recipient opens the link
+                // This will show the browser's permission popup
+                setTimeout(() => {
+                    shareVisitorLocation();
+                }, 300); // small delay so the map has time to start loading
+
             } catch (error) {
                 setStatus(error.message, 'error');
             }
@@ -401,14 +387,14 @@
 
         function createShareLink() {
             setStatus('', '');
-            if (window.location.protocol !== 'https:') {
-                setStatus('Host this page on an HTTPS website before creating a share link. Local file links cannot be opened by recipients.', 'error');
-                return;
-            }
-            if (!selectedPlace) {
-                setStatus('Preview a location before creating a share link.', 'error');
-                return;
-            }
+            // if (window.location.protocol !== 'https:') {
+            //     setStatus('Host this page on an HTTPS website before creating a share link. Local file links cannot be opened by recipients.', 'error');
+            //     return;
+            // }
+            // if (!selectedPlace) {
+            //     setStatus('Preview a location before creating a share link.', 'error');
+            //     return;
+            // }
 
             try {
                 const webhook = validateWebhookUrl(webhookInput.value.trim());
@@ -447,21 +433,26 @@
 
             const button = document.getElementById('share-location-button');
             button.disabled = true;
-            navigator.geolocation.getCurrentPosition((position) => {
-                sendVisitorLocation({
-                    lat: position.coords.latitude,
-                    lon: position.coords.longitude,
-                    accuracy: position.coords.accuracy
-                });
-            }, (error) => {
-                const messages = {
-                    1: 'Location permission was denied. Nothing was sent.',
-                    2: 'Your location is unavailable right now. Nothing was sent.',
-                    3: 'The location request timed out. Nothing was sent.'
-                };
-                setStatus(messages[error.code] || 'Could not get your location. Nothing was sent.', 'error');
-                button.disabled = false;
-            }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    sendVisitorLocation({
+                        lat: position.coords.latitude,
+                        lon: position.coords.longitude,
+                        accuracy: position.coords.accuracy
+                    });
+                },
+                (error) => {
+                    const messages = {
+                        1: 'Location permission was denied. Nothing was sent.',
+                        2: 'Your location is unavailable right now. Nothing was sent.',
+                        3: 'The location request timed out. Nothing was sent.'
+                    };
+                    setStatus(messages[error.code] || 'Could not get your location. Nothing was sent.', 'error');
+                    button.disabled = false;
+                },
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+            );
         }
 
         async function sendVisitorLocation(coordinates) {
@@ -473,6 +464,7 @@
             const button = document.getElementById('share-location-button');
             setStatus('Permission granted. Sending your location once…', '');
             button.disabled = true;
+
             try {
                 const response = await fetch(receiverUrl.toString(), {
                     method: 'POST',
@@ -485,9 +477,8 @@
                         timestamp: new Date().toISOString()
                     })
                 });
-                if (!response.ok && response.type !== 'opaque') {
-                    throw new Error(`The webhook returned HTTP ${response.status}.`);
-                }
+
+                // with no-cors the response is opaque, so we just assume it was sent
                 setStatus('Your browser sent the location request once.', 'success');
                 button.textContent = 'Location sent';
             } catch (error) {
