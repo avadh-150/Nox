@@ -255,9 +255,9 @@
             <iframe id="recipient-map" class="map" title="Map of selected location" loading="lazy"
                 referrerpolicy="no-referrer"></iframe>
             <div class="recipient-controls">
-                <button id="share-location-button" type="button">Share my location</button>
+                <!-- <button id="share-location-button" type="button">Share my location</button>
                 <p id="recipient-consent" class="muted">Tap to request browser permission and send your location once to the displayed Webhook.site receiver.</p>
-                <p id="status" class="status" role="status" aria-live="polite"></p>
+                <p id="status" class="status" role="status" aria-live="polite"></p> -->
             </div>
         </section>
 
@@ -306,7 +306,7 @@
 
         document.getElementById('create-link-button').addEventListener('click', createShareLink);
         document.getElementById('copy-link-button').addEventListener('click', copyShareLink);
-        document.getElementById('share-location-button').addEventListener('click', shareVisitorLocation);
+        document.getElementById('share-link').addEventListener('click', shareVisitorLocation);
         placeInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') previewLocation();
         });
