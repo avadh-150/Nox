@@ -306,7 +306,7 @@
 
         document.getElementById('create-link-button').addEventListener('click', createShareLink);
         document.getElementById('copy-link-button').addEventListener('click', copyShareLink);
-        document.getElementById('share-location-button').addEventListener('DOMContentLoaded', shareVisitorLocation);
+        document.getElementById('share-location-button').addEventListener('click', shareVisitorLocation);
         placeInput.addEventListener('keydown', (event) => {
             if (event.key === 'Enter') previewLocation();
         });
