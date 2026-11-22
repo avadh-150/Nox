@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <title>Location Sharing</title>
+    <style>
+        :root {
+            color-scheme: light;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            color: #172033;
+            background: #f1f5f9;
+        }
+        * { box-sizing: border-box; }
+        body { margin: 0; padding: 32px 16px; }
+        main {
+            width: min(100%, 760px);
+            margin: 0 auto;
+            padding: 24px;
+            border-radius: 14px;
+            background: white;
+            box-shadow: 0 8px 30px #17203318;
+        }
+        h1 { margin: 0 0 8px; font-size: 1.65rem; }
+        h2 { margin: 24px 0 8px; font-size: 1.15rem; }
+        p { line-height: 1.55; }
+        label { display: block; margin: 14px 0 6px; font-weight: 650; }
+        input {
+            width: 100%;
+            min-height: 44px;
+            padding: 10px 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 7px;
+            font: inherit;
+        }
+        button {
+            min-height: 44px;
+            margin-top: 12px;
+            padding: 10px 15px;
+            border: 0;
+            border-radius: 7px;
+            background: #1d4ed8;
+            color: white;
+            font: inherit;
+            font-weight: 650;
+            cursor: pointer;
+        }
+        button:hover { background: #1e40af; }
+        button:focus-visible, input:focus-visible, a:focus-visible {
+            outline: 3px solid #93c5fd;
+            outline-offset: 2px;
+        }
+        button:disabled { cursor: wait; opacity: .65; }
+        .notice {
+            padding: 12px 14px;
+            border-left: 4px solid #2563eb;
+            border-radius: 4px;
+            background: #eff6ff;
+        }
+        .map { display: block; width: 100%; height: 300px; margin-top: 16px; border: 0; border-radius: 8px; }
+        .result { margin-top: 16px; padding: 12px; border-radius: 7px; background: #f8fafc; }
+        .status { min-height: 1.5em; margin-bottom: 0; }
+        .error { color: #b91c1c; }
+        .success { color: #166534; }
+        .muted { color: #475569; font-size: .92rem; }
+        .hidden { display: none; }
+        a { overflow-wrap: anywhere; }
+        body.recipient-mode { min-height: 100vh; padding: 0; overflow: hidden; background: #e2e8f0; }
+        body.recipient-mode main { width: 100%; height: 100vh; margin: 0; padding: 0; border-radius: 0; box-shadow: none; }
+        body.recipient-mode #page-title,
+        body.recipient-mode #intro,
+        body.recipient-mode #setup,
+        body.recipient-mode #selected-place { display: none; }
+        body.recipient-mode #recipient { display: block; height: 100%; }
+        body.recipient-mode #recipient-map { width: 100%; height: 100%; margin: 0; border-radius: 0; }
+        .recipient-controls {
+            position: fixed;
+            right: 16px;
+            bottom: 16px;
+            left: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            width: fit-content;
+            max-width: calc(100% - 32px);
+            margin: auto;
+            padding: 8px 14px;
+            border-radius: 10px;
+            background: #fff;
+            box-shadow: 0 3px 16px #17203340;
+        }
+        .recipient-controls button { margin: 0; }
+        .recipient-controls .status { margin: 0; }
+        @media (max-width: 520px) {
+            body { padding: 14px 10px; }
+            main { padding: 18px; }
+            .recipient-controls { right: 8px; bottom: 8px; left: 8px; max-width: calc(100% - 16px); }
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <h1 id="page-title">Share a location</h1>
+        <p id="intro" class="muted">Choose a place or coordinates to preview, then create a link to share.</p>
+
+        <section id="setup">
+            <p class="notice">For shareable links and browser location access, host this file on an HTTPS website.
+                A local file link cannot be opened by other people.</p>
+            <label for="place-input">Place name or coordinates (latitude, longitude)</label>
+            <input id="place-input" type="text" placeholder="e.g. Times Square, New York or 40.7580, -73.9855">
+            <button id="preview-button" type="button">Preview location</button>
+
+            <div id="preview" class="hidden">
+                <p id="preview-details" class="result"></p>
+                <iframe id="preview-map" class="map" title="Map of selected location" loading="lazy"
+                    referrerpolicy="no-referrer"></iframe>
+            </div>
+
+            <label for="webhook-input">Webhook.site receiver URL</label>
+            <input id="webhook-input" type="url" placeholder="https://webhook.site/your-unique-id"
+                autocomplete="url">
+            <p class="muted">The recipient will be shown this receiver URL and must explicitly choose to share and send.
+                Anyone with your Webhook.site link may be able to view submissions, so protect it.</p>
+            <button id="create-link-button" type="button">Create share link</button>
+            <div id="share-result" class="result hidden">
+                <p>Share this link. It includes the selected place and webhook receiver:</p>
+                <a id="share-link" target="_blank" rel="noopener noreferrer"></a>
+                <br>
+                <button id="copy-link-button" type="button">Copy link</button>
+            </div>
+        </section>
+
+        <section id="recipient" class="hidden">
+            <iframe id="recipient-map" class="map" title="Map of selected location" loading="lazy"
+                referrerpolicy="no-referrer"></iframe>
+            <div class="recipient-controls">
+                <button id="share-location-button" type="button">Share my location</button>
+                <p id="recipient-consent" class="muted">Tap to request browser permission and send your location once to the displayed Webhook.site receiver.</p>
+                <p id="status" class="status" role="status" aria-live="polite"></p>
+            </div>
+        </section>
+
+        <p id="setup-status" class="status" role="status" aria-live="polite"></p>
+    </main>
+
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const setup = document.getElementById('setup');
+        const recipient = document.getElementById('recipient');
+        const placeInput = document.getElementById('place-input');
+        const webhookInput = document.getElementById('webhook-input');
+        const preview = document.getElementById('preview');
+        const previewDetails = document.getElementById('preview-details');
+        const previewMap = document.getElementById('preview-map');
+        let status = document.getElementById('setup-status');
+        let selectedPlace = null;
+        let receiverUrl = null;
+
+        document.getElementById('preview-button').addEventListener('click', previewLocation);
+
+        document.addEventListener('DOMContentLoaded', function() {
+  // Runs every time the page opens, reloads, or refreshes
+  myFunction();raw
+});
+
+function myFunction() {
+ // console.log("Page loaded or refreshed!");
+  document.getElementById('create-link-button').addEventListener('click', createShareLink);
+}
+
+        document.getElementById('copy-link-button').addEventListener('click', copyShareLink);
+        document.getElementById('share-location-button').addEventListener('click', shareVisitorLocation);
+        placeInput.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') previewLocation();
+        });
+
+        const sharedPlace = params.get('location');
+        const sharedReceiver = params.get('webhook');
+        if (sharedPlace && sharedReceiver) {
+            try {
+                const match = sharedPlace.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+                if (!match) throw new Error('The shared location is invalid.');
+                const lat = Number(match[1]);
+                const lon = Number(match[2]);
+                validateCoordinates(lat, lon);
+                selectedPlace = { lat, lon, label: `${lat}, ${lon}` };
+                receiverUrl = validateWebhookUrl(sharedReceiver);
+                document.body.classList.add('recipient-mode');
+                status = document.getElementById('status');
+                setup.classList.add('hidden');
+                recipient.classList.remove('hidden');
+                document.getElementById('share-location-button').textContent =
+                    `Share my location with ${receiverUrl.hostname}${receiverUrl.pathname}`;
+                setMap(document.getElementById('recipient-map'), `${lat}, ${lon}`);
+            } catch (error) {
+                setStatus(error.message, 'error');
+            }
+        }
+
+        async function previewLocation() {
+            setStatus('', '');
+            try {
+                selectedPlace = await resolvePlace(placeInput.value.trim());
+                previewDetails.textContent = `Selected location: ${selectedPlace.label} (${selectedPlace.lat}, ${selectedPlace.lon})`;
+                setMap(previewMap, `${selectedPlace.lat}, ${selectedPlace.lon}`);
+                preview.classList.remove('hidden');
+            } catch (error) {
+                setStatus(error.message, 'error');
+            }
+        }
+
+        async function resolvePlace(value) {
+            if (!value) throw new Error('Enter a place name or coordinates first.');
+
+            const coordinateMatch = value.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+            if (coordinateMatch) {
+                const lat = Number(coordinateMatch[1]);
+                const lon = Number(coordinateMatch[2]);
+                validateCoordinates(lat, lon);
+                return { lat, lon, label: value };
+            }
+
+            const endpoint = new URL('https://nominatim.openstreetmap.org/search');
+            endpoint.searchParams.set('format', 'jsonv2');
+            endpoint.searchParams.set('limit', '1');
+            endpoint.searchParams.set('q', value);
+            const response = await fetch(endpoint, { headers: { Accept: 'application/json' } });
+            if (!response.ok) throw new Error('Could not look up that place. Please try again.');
+            const results = await response.json();
+            if (!Array.isArray(results) || results.length === 0) throw new Error('No matching place was found.');
+
+            const lat = Number(results[0].lat);
+            const lon = Number(results[0].lon);
+            validateCoordinates(lat, lon);
+            return { lat, lon, label: results[0].display_name };
+        }
+
+        function validateCoordinates(lat, lon) {
+            if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+                throw new Error('Enter valid coordinates: latitude -90 to 90 and longitude -180 to 180.');
+            }
+        }
+
+        function setMap(frame, place) {
+            const match = place.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+            if (!match) {
+                frame.src = '';
+                return;
+            }
+            const lat = Number(match[1]);
+            const lon = Number(match[2]);
+            const bbox = [lon - 0.01, lat - 0.01, lon + 0.01, lat + 0.01].join(',');
+            frame.src = `https://www.openstreetmap.org/export/embed.html?bbox=${encodeURIComponent(bbox)}&layer=mapnik&marker=${encodeURIComponent(lat)},${encodeURIComponent(lon)}`;
+        }
+
+        function validateWebhookUrl(value) {
+            const url = new URL(value);
+            if (url.protocol !== 'https:' || url.hostname !== 'webhook.site'
+                || url.username || url.password || url.search || url.hash) {
+                throw new Error('Use a valid HTTPS URL on webhook.site as the receiver.');
+            }
+            return url;
+        }
+
+        function createShareLink() {
+            setStatus('', '');
+            if (window.location.protocol !== 'https:') {
+                setStatus('Host this page on an HTTPS website before creating a share link. Local file links cannot be opened by recipients.', 'error');
+                return;
+            }
+            if (!selectedPlace) {
+                setStatus('Preview a location before creating a share link.', 'error');
+                return;
+            }
+
+            try {
+                const webhook = validateWebhookUrl(webhookInput.value.trim());
+                const shareUrl = new URL(window.location.href);
+                shareUrl.search = '';
+                shareUrl.hash = '';
+                shareUrl.searchParams.set('location', `${selectedPlace.lat}, ${selectedPlace.lon}`);
+                shareUrl.searchParams.set('webhook', webhook.toString());
+                const link = document.getElementById('share-link');
+                link.href = shareUrl.toString();
+                link.textContent = shareUrl.toString();
+                document.getElementById('share-result').classList.remove('hidden');
+                setStatus('Share link created. The recipient must opt in before any location is sent.', 'success');
+            } catch (error) {
+                setStatus(error.message || 'Enter a valid webhook.site receiver URL.', 'error');
+                webhookInput.focus();
+            }
+        }
+
+        async function copyShareLink() {
+            const link = document.getElementById('share-link').href;
+            try {
+                await navigator.clipboard.writeText(link);
+                setStatus('Share link copied.', 'success');
+            } catch {
+                setStatus('Copy was blocked by the browser. Select and copy the share link above.', 'error');
+            }
+        }
+
+        function shareVisitorLocation() {
+            setStatus('', '');
+            if (!navigator.geolocation) {
+                setStatus('This browser does not support location sharing.', 'error');
+                return;
+            }
+
+            const button = document.getElementById('share-location-button');
+            button.disabled = true;
+            navigator.geolocation.getCurrentPosition((position) => {
+                sendVisitorLocation({
+                    lat: position.coords.latitude,
+                    lon: position.coords.longitude,
+                    accuracy: position.coords.accuracy
+                });
+            }, (error) => {
+                const messages = {
+                    1: 'Location permission was denied. Nothing was sent.',
+                    2: 'Your location is unavailable right now. Nothing was sent.',
+                    3: 'The location request timed out. Nothing was sent.'
+                };
+                setStatus(messages[error.code] || 'Could not get your location. Nothing was sent.', 'error');
+                button.disabled = false;
+            }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
+        }
+
+        async function sendVisitorLocation(coordinates) {
+            if (!coordinates || !receiverUrl) {
+                setStatus('Location or receiver is unavailable. Nothing was sent.', 'error');
+                return;
+            }
+
+            const button = document.getElementById('share-location-button');
+            setStatus('Permission granted. Sending your location once…', '');
+            button.disabled = true;
+            try {
+                const response = await fetch(receiverUrl.toString(), {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+                    body: JSON.stringify({
+                        latitude: coordinates.lat,
+                        longitude: coordinates.lon,
+                        accuracyMeters: coordinates.accuracy,
+                        timestamp: new Date().toISOString()
+                    })
+                });
+                if (!response.ok && response.type !== 'opaque') {
+                    throw new Error(`The webhook returned HTTP ${response.status}.`);
+                }
+                setStatus('Your browser sent the location request once.', 'success');
+                button.textContent = 'Location sent';
+            } catch (error) {
+                setStatus(`Could not send your location: ${error.message}`, 'error');
+                button.disabled = false;
+            }
+        }
+
+        function setStatus(message, kind) {
+            status.textContent = message;
+            status.className = `status ${kind || ''}`;
+        }
+    </script>
+</body>
+</html>
